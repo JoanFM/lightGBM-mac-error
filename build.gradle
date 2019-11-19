@@ -1,0 +1,79 @@
+
+buildscript {
+    repositories {
+        jcenter()
+        maven { url "http://repo1.maven.org/maven2" }
+        maven { url "http://repo.maven.apache.org/maven2" }
+        maven { url "https://dl.bintray.com/spark-packages/maven" }
+        mavenLocal()
+        flatDir {
+            dirs "$rootProject.projectDir/libs"
+        }
+    }
+    dependencies {
+        classpath 'com.github.jengelman.gradle.plugins:shadow:5.1.0'
+    }
+    configurations.classpath {
+        resolutionStrategy { cacheChangingModulesFor(0, 'seconds') }
+    }
+}
+
+plugins {
+    id "com.github.maiflai.scalatest" version "0.25"
+}
+
+allprojects {
+    repositories {
+        maven { url "https://dl.bintray.com/spark-packages/maven" }
+        maven { url "http://repo.maven.apache.org/maven2" }
+    }
+}
+
+project.ext {
+    versions = [
+            junit: '4.12',
+            logback: '1.2.3',
+            pegdown: '1.6.0',
+            scala: '2.11.8',
+            scala_dep: '2.11',
+            scala_test: '3.0.0',
+            spark: '2.4.3',
+            spark_testing: '0.12.0',
+            typesafe: '3.9.2',
+            mmlspark: '0.18.1'
+    ]
+
+    libraries = [
+            junit: "junit:junit:${versions.junit}",
+            logback: "ch.qos.logback:logback-classic:${versions.logback}",
+            pegdown: "org.pegdown:pegdown:${versions.pegdown}",
+	    mmlspark: "com.microsoft.ml.spark:mmlspark_${versions.scala_dep}:${versions.mmlspark}",
+            scala: "org.scala-lang:scala-library:${versions.scala}",
+            scala_logging: "com.typesafe.scala-logging:scala-logging_${versions.scala_dep}:${versions.typesafe}",
+            scala_test: "org.scalatest:scalatest_${versions.scala_dep}:${versions.scala_test}",
+            spark_core: "org.apache.spark:spark-core_${versions.scala_dep}:${versions.spark}",
+            spark_sql: "org.apache.spark:spark-sql_${versions.scala_dep}:${versions.spark}",
+            spark_testing: "com.holdenkarau:spark-testing-base_${versions.scala_dep}:${versions.spark}_${versions.spark_testing}"
+    ]
+}
+
+dependencies {
+    compileOnly libraries.spark_sql
+
+    compile libraries.scala,
+	    libraries.mmlspark,
+            fileTree(include: ['*.jar'], dir: 'libs')
+            //files("mmlspark-assembly-1.0.0-rc1-13-9ba54497-20191114-1501-SNAPSHOT.jar")
+
+    testCompile libraries.scala_test,
+            libraries.spark_core,
+            libraries.spark_testing
+
+    testRuntime libraries.pegdown
+
+    testImplementation libraries.spark_sql
+}
+
+tasks.withType(ScalaCompile) {
+    scalaCompileOptions.additionalParameters = ["-feature", "-Xfatal-warnings", "-Xlint" , "-Ylog-classpath"]
+}
