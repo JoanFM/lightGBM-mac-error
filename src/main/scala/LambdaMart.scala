@@ -1,39 +1,25 @@
-import java.util.StringTokenizer
-
+import ciir.umass.edu.learning.DenseDataPoint
 import com.microsoft.ml.spark.lightgbm.{LightGBMRanker, LightGBMRankerModel}
 import org.apache.spark.ml.linalg.{Vector, Vectors}
 import org.apache.spark.sql.functions.lit
 import org.apache.spark.sql.{Column, Dataset, Row, SparkSession}
 
-import scala.collection.mutable
+case class Point(l: Double, q: Int, f: Vector, d: String)
 
-case class RankedPoint(Label: Double, QID: Int, Features: Vector, DocID: String)
-
-class LambdaMart(config: LambdaMartConfig, sparkSession: SparkSession) {
+class LambdaMart(sparkSession: SparkSession, trainPath: String, validatePath: String) {
 
   import LambdaMart._
   private val gradientBoostedModel = new LightGBMRanker()
-  gradientBoostedModel
-    .setFeaturesCol(config.featuresColumn)
-    .setLabelCol(config.labelColumn)
-    .setGroupCol(qidColumn)
+    .setFeaturesCol("f")
+    .setLabelCol("l")
+    .setGroupCol(queryColumn)
     .setValidationIndicatorCol("Validation")
-  gradientBoostedModel
-    .setNumIterations(config.numIterations)
-    .setNumLeaves(config.numLeaves)
-    .setLearningRate(config.learningRate)
-    .setMaxPosition(config.evalAt)
-    .setEarlyStoppingRound(config.earlyStoppingRound)
-  gradientBoostedModel.setParallelism(config.treeParallelism)
-  gradientBoostedModel.setVerbosity(config.verbosity)
+    .setNumIterations(2)
+    .setNumLeaves(2)
 
-  val train = loadLibSVMDataset(sparkSession, config.trainPath, isValidation = false)
-  val validation = loadLibSVMDataset(sparkSession, config.validatePath, isValidation = true)
+  private val train = loadLibSVMDataset(sparkSession, trainPath, isValidation = false)
+  private val validation = loadLibSVMDataset(sparkSession, validatePath, isValidation = true)
 
-  /**
-   *
-   * @return Trained model
-   */
   def trainRankerModel(): LightGBMRankerModel = {
     gradientBoostedModel.fit(train.union(validation))
   }
@@ -41,22 +27,14 @@ class LambdaMart(config: LambdaMartConfig, sparkSession: SparkSession) {
 
 object LambdaMart {
 
-  private final val qidColumn = "QID"
+  private final val queryColumn = "q"
 
-  def parseLine(line: String): RankedPoint = {
-    val st = new StringTokenizer(line, " ")
-    val label = st.nextToken.toDouble
-    val qid   = st.nextToken.replace("qid:", "").toInt
-    val features = mutable.ListBuffer[Double]()
-
-    var featureString = st.nextToken
-    do {
-      val splitIndex = featureString.indexOf(":") + 1
-      features += featureString.substring(splitIndex).toDouble
-      featureString = st.nextToken
-    } while (featureString != "#")
-    val doc = st.nextToken
-    RankedPoint(label, qid, Vectors.dense(features.toArray), doc)
+  def parseLine(line: String): Point = {
+    val dataPoint = new DenseDataPoint(line)
+    val features = Array.fill[Float](dataPoint.getFeatureCount){0.0f}
+    Array.copy(dataPoint.getFeatureVector, 1, features, 0, features.length)
+    Point(dataPoint.getLabel, dataPoint.getID.toInt,
+      Vectors.dense(features.map(_.toDouble)), dataPoint.getDescription)
   }
 
   def loadLibSVMDataset(sparkSession: SparkSession, path: String, isValidation: Boolean): Dataset[Row] = {
@@ -64,7 +42,7 @@ object LambdaMart {
     val rawData = sparkSession.read.text(path)
     val parsed = rawData.map(row => parseLine(row.getString(0)))
       .withColumn("Validation", lit(isValidation))
-      .repartition(new Column(qidColumn))
+      .repartition(new Column(queryColumn))
     parsed
   }
 }
